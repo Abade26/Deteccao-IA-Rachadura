@@ -1,0 +1,7 @@
+venv/
+
+*.pyd
+*.dll
+*.lib
+
+*.pt
