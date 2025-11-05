@@ -9,20 +9,36 @@ from email.mime.text import MIMEText
 import time
 import os
 
-# Caminho do modelo
-model_path = 'best.pt'
+# ----------------------
+# Configurações do YOLO
+# ----------------------
+model_path = 'runs/segment/train7/weights/best.pt'
 model = YOLO(model_path)
 
+# ----------------------
 # Configurações do e-mail
-EMAIL_REMETENTE = "rodrigoabade26@gmail.com"
-SENHA = "aqrg elck abec ycfk"  # use senha de app, não a senha normal
-EMAIL_DESTINATARIO = "profcelsobarreto@hotmail.com"
+# ----------------------
+EMAIL_REMETENTE = "alerta@walleye.com.br"
+SENHA = "n#7CEAFdc@"  # pode usar variável de ambiente para segurança
+EMAIL_DESTINATARIO = "rodrigoabade26@gmail.com"
 
-# Delay entre alertas (em segundos)
+
+#EMAIL_REMETENTE = "rodrigoabade26@gmail.com"
+#SENHA = "aqrg elck abec ycfk" 
+#EMAIL_DESTINATARIO = ""
+
+SMTP_HOST = "smtp.hostinger.com"
+SMTP_PORT = 587  # TLS
+
+# ----------------------
+# Configurações de alerta
+# ----------------------
 DELAY_ALERTA = 300  # 5 minutos
 ultimo_alerta = 0
 
+# ----------------------
 # Função para enviar e-mail com anexo
+# ----------------------
 def enviar_email(imagem_path):
     try:
         msg = MIMEMultipart()
@@ -39,11 +55,11 @@ def enviar_email(imagem_path):
             mime = MIMEBase('image', 'jpeg')
             mime.set_payload(f.read())
             encoders.encode_base64(mime)
-            mime.add_header('Content-Disposition', f'attachment; filename="%s"' % os.path.basename(imagem_path))
+            mime.add_header('Content-Disposition', f'attachment; filename="{os.path.basename(imagem_path)}"')
             msg.attach(mime)
 
-        # Conexão com servidor SMTP (exemplo: Gmail)
-        server = smtplib.SMTP('smtp.gmail.com', 587)
+        # Conexão com Hostinger SMTP
+        server = smtplib.SMTP(SMTP_HOST, SMTP_PORT)
         server.starttls()
         server.login(EMAIL_REMETENTE, SENHA)
         server.sendmail(EMAIL_REMETENTE, EMAIL_DESTINATARIO, msg.as_string())
@@ -53,19 +69,30 @@ def enviar_email(imagem_path):
     except Exception as e:
         print("Erro ao enviar email:", e)
 
-# Abre a webcam
+# ----------------------
+# Configurações da câmera
+# ----------------------
 cap = cv2.VideoCapture(0)
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
 if not cap.isOpened():
     print("Não foi possível acessar a câmera.")
     exit()
+
+FRAME_INTERVAL = 3  # Processa 1 a cada 3 frames para melhorar FPS
+frame_count = 0
 
 while True:
     ret, frame = cap.read()
     if not ret:
         break
 
-    # Faz a inferência
+    frame_count += 1
+    if frame_count % FRAME_INTERVAL != 0:
+        continue  # Pula frames para otimizar FPS
+
+    # Inferência YOLO
     results = model(frame, task='segment', verbose=False)
     result = results[0]
 
@@ -73,7 +100,7 @@ while True:
         for i, m in enumerate(result.masks.data):
             conf = result.boxes.conf[i].item()
 
-            # 🚨 Verifica se confiança > 80%
+            # 🚨 Confiança > 80%
             if conf >= 0.8:
                 tempo_atual = time.time()
                 if tempo_atual - ultimo_alerta > DELAY_ALERTA:
@@ -83,11 +110,12 @@ while True:
 
                     enviar_email(img_name)
                     ultimo_alerta = tempo_atual
+                    break  # evita múltiplos envios simultâneos
 
-            # Máscara azul
+            # Máscara vermelha sobre o frame
             mask_array = m.cpu().numpy()
             mask_color = np.zeros_like(frame, dtype=np.uint8)
-            mask_color[:, :, 0] = (mask_array * 255).astype(np.uint8)
+            mask_color[:, :, 2] = (mask_array * 255).astype(np.uint8)  # vermelho
             frame = cv2.addWeighted(frame, 1.0, mask_color, 0.4, 0)
 
             # Box + confiança
