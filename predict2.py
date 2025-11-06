@@ -9,26 +9,17 @@ from email.mime.text import MIMEText
 import time
 import os
 
-# ----------------------
-# Configurações do YOLO
-# ----------------------
 model_path = 'runs/segment/train7/weights/best.pt'
 model = YOLO(model_path)
 
-# ----------------------
-# Configurações do e-mail
-# ----------------------
 EMAIL_REMETENTE = "alerta@walleye.com.br"
-SENHA = "n#7CEAFdc@"  # use variável de ambiente para segurança
-EMAIL_DESTINATARIO = "rodrigoabade26@gmail.com"
+SENHA = "n#7CEAFdc@" 
+EMAIL_DESTINATARIO = ""
 
 SMTP_HOST = "smtp.hostinger.com"
-SMTP_PORT = 587  # TLS
+SMTP_PORT = 587  
 
-# ----------------------
-# Configurações de alerta
-# ----------------------
-DELAY_ALERTA = 300  # 5 minutos
+DELAY_ALERTA = 300  
 ultimo_alerta = 0
 
 # ----------------------
@@ -41,7 +32,6 @@ def enviar_email(imagem_path):
         msg['To'] = EMAIL_DESTINATARIO
         msg['Subject'] = "⚠️ Alerta Automático — Rachadura Estrutural Detectada"
 
-        # Corpo do e-mail (HTML)
         corpo_html = f"""
         <html>
         <body style="font-family: Arial, sans-serif; background-color: #f4f6f8; padding: 20px;">
@@ -62,7 +52,6 @@ def enviar_email(imagem_path):
 
         msg.attach(MIMEText(corpo_html, 'html'))
 
-        # Anexo
         with open(imagem_path, "rb") as f:
             mime = MIMEBase('image', 'jpeg')
             mime.set_payload(f.read())
@@ -70,35 +59,28 @@ def enviar_email(imagem_path):
             mime.add_header('Content-Disposition', f'attachment; filename="{os.path.basename(imagem_path)}"')
             msg.attach(mime)
 
-        # Conexão com servidor SMTP
         server = smtplib.SMTP(SMTP_HOST, SMTP_PORT)
         server.starttls()
         server.login(EMAIL_REMETENTE, SENHA)
         server.sendmail(EMAIL_REMETENTE, EMAIL_DESTINATARIO, msg.as_string())
         server.quit()
 
-        print("📩 Email enviado com sucesso!")
+        print("Email enviado com sucesso!")
 
     except Exception as e:
-        print("❌ Erro ao enviar email:", e)
+        print("Erro ao enviar email:", e)
 
-# ----------------------
-# Configurações da câmera
-# ----------------------
 cap = cv2.VideoCapture(0)
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
 if not cap.isOpened():
-    print("❌ Não foi possível acessar a câmera.")
+    print(" Não foi possível acessar a câmera.")
     exit()
 
-FRAME_INTERVAL = 3  # Processa 1 a cada 3 frames para melhorar FPS
+FRAME_INTERVAL = 3 
 frame_count = 0
 
-# ----------------------
-# Loop principal
-# ----------------------
 while True:
     ret, frame = cap.read()
     if not ret:
@@ -106,9 +88,8 @@ while True:
 
     frame_count += 1
     if frame_count % FRAME_INTERVAL != 0:
-        continue  # pula frames para otimizar FPS
+        continue  
 
-    # Inferência YOLO
     results = model(frame, task='segment', verbose=False)
     result = results[0]
 
@@ -116,7 +97,6 @@ while True:
         for i, m in enumerate(result.masks.data):
             conf = result.boxes.conf[i].item()
 
-            # 🚨 Confiança > 80%
             if conf >= 0.8:
                 tempo_atual = time.time()
                 if tempo_atual - ultimo_alerta > DELAY_ALERTA:
@@ -126,15 +106,13 @@ while True:
 
                     enviar_email(img_name)
                     ultimo_alerta = tempo_atual
-                    break  # evita múltiplos envios simultâneos
+                    break  
 
-            # Máscara vermelha sobre o frame
             mask_array = m.cpu().numpy()
             mask_color = np.zeros_like(frame, dtype=np.uint8)
-            mask_color[:, :, 2] = (mask_array * 255).astype(np.uint8)  # vermelho
+            mask_color[:, :, 2] = (mask_array * 255).astype(np.uint8)
             frame = cv2.addWeighted(frame, 1.0, mask_color, 0.4, 0)
 
-            # Box + confiança
             box = result.boxes.xyxy[i].cpu().numpy().astype(int)
             x1, y1, x2, y2 = box
             cv2.putText(frame,
