@@ -90,7 +90,7 @@ while True:
     if frame_count % FRAME_INTERVAL != 0:
         continue  
 
-    results = model(frame, task='segment', verbose=False)
+    results = model(frame, task='segment', verbose=False, device="cpu")
     result = results[0]
 
     if result.masks and result.boxes:
