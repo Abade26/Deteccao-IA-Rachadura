@@ -8,6 +8,11 @@ from email import encoders
 from email.mime.text import MIMEText
 import time
 import os
+import requests
+import yaml 
+with open('configs/device_config.yaml', 'r') as f:
+    data = yaml.load(f, Loader=yaml.SafeLoader)
+
 
 model_path = 'runs/segment/train7/weights/best.pt'
 model = YOLO(model_path)
@@ -93,6 +98,10 @@ while True:
     results = model(frame, task='segment', verbose=False, device="cpu")
     result = results[0]
 
+    url = f"{data.get('api_url')}/alerts/create"
+    url_email = f"{data.get('api_url')}/email/send"
+    device_id = data.get('id')
+
     if result.masks and result.boxes:
         for i, m in enumerate(result.masks.data):
             conf = result.boxes.conf[i].item()
@@ -100,12 +109,15 @@ while True:
             if conf >= 0.8:
                 tempo_atual = time.time()
                 if tempo_atual - ultimo_alerta > DELAY_ALERTA:
-                    timestamp = time.strftime("%Y%m%d-%H%M%S")
+                    timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ")
                     img_name = f"alerta_{timestamp}.jpg"
                     cv2.imwrite(img_name, frame)
 
                     enviar_email(img_name)
                     ultimo_alerta = tempo_atual
+                    dados = {"id_dispositivo": device_id, "date_detection": timestamp, "severity": 'alta', "messager": 'CASA DA MAE JOANA'}
+                    print(dados)
+                    requests.post(url, json=dados)
                     break  
 
             mask_array = m.cpu().numpy()
