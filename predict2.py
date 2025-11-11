@@ -1,3 +1,4 @@
+import json
 import cv2
 from ultralytics import YOLO
 import numpy as np
@@ -8,6 +9,11 @@ from email import encoders
 from email.mime.text import MIMEText
 import time
 import os
+import requests
+import yaml 
+with open('configs/device_config.yaml', 'r') as f:
+    data = yaml.load(f, Loader=yaml.SafeLoader)
+
 
 model_path = 'runs/segment/train7/weights/best.pt'
 model = YOLO(model_path)
@@ -90,8 +96,12 @@ while True:
     if frame_count % FRAME_INTERVAL != 0:
         continue  
 
-    results = model(frame, task='segment', verbose=False)
+    results = model(frame, task='segment', verbose=False, device="cpu")
     result = results[0]
+
+    url = f"{data.get('api_url')}/alerts/create"
+    url_email = f"{data.get('api_url')}/email/send"
+    device_id = data.get('id')
 
     if result.masks and result.boxes:
         for i, m in enumerate(result.masks.data):
@@ -100,12 +110,24 @@ while True:
             if conf >= 0.8:
                 tempo_atual = time.time()
                 if tempo_atual - ultimo_alerta > DELAY_ALERTA:
-                    timestamp = time.strftime("%Y%m%d-%H%M%S")
-                    img_name = f"alerta_{timestamp}.jpg"
+                    timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ")
+                    file_timestamp = time.strftime("%Y%m%d-%H%M%S")
+                    img_name = f"alerta_{file_timestamp}.jpeg"
                     cv2.imwrite(img_name, frame)
 
-                    enviar_email(img_name)
                     ultimo_alerta = tempo_atual
+                    dados = {"id_dispositivo": device_id, "date_detection": timestamp, "severity": 'alta', "messager": 'CASA DA MAE JOANA'}
+                    files = {
+                        "dto": (None, json.dumps(dados), "application/json"),
+                        "file": (img_name, open(img_name, "rb"), "image/jpeg")
+                    }
+                    try:
+                        print(f"📤 Enviando alerta com imagem {img_name}...")
+                        resp = requests.post(url, files=files, timeout=10)
+                        print("📡 Status:", resp.status_code)
+                        print("📬 Resposta:", resp.text)
+                    except Exception as e:
+                        print("❌ Falha ao enviar alerta:", e)
                     break  
 
             mask_array = m.cpu().numpy()
