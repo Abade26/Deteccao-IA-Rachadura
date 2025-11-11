@@ -1,3 +1,4 @@
+import json
 import cv2
 from ultralytics import YOLO
 import numpy as np
@@ -110,14 +111,23 @@ while True:
                 tempo_atual = time.time()
                 if tempo_atual - ultimo_alerta > DELAY_ALERTA:
                     timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ")
-                    img_name = f"alerta_{timestamp}.jpg"
+                    file_timestamp = time.strftime("%Y%m%d-%H%M%S")
+                    img_name = f"alerta_{file_timestamp}.jpeg"
                     cv2.imwrite(img_name, frame)
 
-                    enviar_email(img_name)
                     ultimo_alerta = tempo_atual
                     dados = {"id_dispositivo": device_id, "date_detection": timestamp, "severity": 'alta', "messager": 'CASA DA MAE JOANA'}
-                    print(dados)
-                    requests.post(url, json=dados)
+                    files = {
+                        "dto": (None, json.dumps(dados), "application/json"),
+                        "file": (img_name, open(img_name, "rb"), "image/jpeg")
+                    }
+                    try:
+                        print(f"📤 Enviando alerta com imagem {img_name}...")
+                        resp = requests.post(url, files=files, timeout=10)
+                        print("📡 Status:", resp.status_code)
+                        print("📬 Resposta:", resp.text)
+                    except Exception as e:
+                        print("❌ Falha ao enviar alerta:", e)
                     break  
 
             mask_array = m.cpu().numpy()
